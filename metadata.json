@@ -1,0 +1,5 @@
+{
+  "name": "Copy of WinTracer AI",
+  "description": "An open-source, web-based system change tracker for Windows, powered by AI. Users upload snapshots of their system state (file lists, processes, registry exports), and the AI compares them to highlight additions, deletions, and modifications, similar to SysTracer.",
+  "requestFramePermissions": []
+}
