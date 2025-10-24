@@ -1,14 +1,6 @@
-
 import { GoogleGenAI } from "@google/genai";
 import type { Snapshot, ComparisonResult, SnapshotFileCategory } from '../types.ts';
 import { SNAPSHOT_CATEGORIES } from '../types.ts';
-
-const API_KEY = process.env.API_KEY;
-if (!API_KEY) {
-    throw new Error("API_KEY environment variable is not set");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 const generateComparisonPrompt = (category: SnapshotFileCategory, snapshotAContent: string, snapshotBContent: string): string => {
     const categoryName = SNAPSHOT_CATEGORIES[category];
@@ -37,7 +29,8 @@ ANALYSIS:
 async function compareCategory(
     category: SnapshotFileCategory,
     snapshotA: Snapshot,
-    snapshotB: Snapshot
+    snapshotB: Snapshot,
+    ai: GoogleGenAI
 ): Promise<[SnapshotFileCategory, string]> {
     const contentA = snapshotA.data[category]?.content ?? '';
     const contentB = snapshotB.data[category]?.content ?? '';
@@ -58,18 +51,27 @@ async function compareCategory(
             contents: prompt,
         });
         return [category, response.text];
-    } catch (error) {
+    } catch (error: any) {
         console.error(`Error comparing ${category}:`, error);
-        return [category, `An error occurred while analyzing the ${SNAPSHOT_CATEGORIES[category]} data.`];
+        // FIX: Removed custom ApiKeyError as API key is handled by environment variables.
+        // The error message will be more generic for security.
+        return [category, `An error occurred while analyzing the ${SNAPSHOT_CATEGORIES[category]} data. Please check the console for details.`];
     }
 }
 
 
-export async function compareSnapshots(snapshotA: Snapshot, snapshotB: Snapshot): Promise<ComparisonResult> {
+export async function compareSnapshots(
+    snapshotA: Snapshot,
+    snapshotB: Snapshot
+): Promise<ComparisonResult> {
+    // FIX: Initialize GoogleGenAI with API key from environment variables as per guidelines.
+    // The API key parameter is removed.
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+    
     const categoriesToCompare = Object.keys(SNAPSHOT_CATEGORIES) as SnapshotFileCategory[];
     
     const comparisonPromises = categoriesToCompare.map(category => 
-        compareCategory(category, snapshotA, snapshotB)
+        compareCategory(category, snapshotA, snapshotB, ai)
     );
 
     const results = await Promise.all(comparisonPromises);

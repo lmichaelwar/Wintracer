@@ -1,56 +1,55 @@
-
 import React, { useState } from 'react';
 import type { ComparisonResult, Snapshot, SnapshotFileCategory } from '../types';
 import { SNAPSHOT_CATEGORIES } from '../types';
+import { ArrowDownIcon, ArrowUpIcon, DocumentTextIcon } from './Icons';
 
 interface ComparisonViewProps {
-  result: ComparisonResult;
-  snapshots: [Snapshot, Snapshot];
+    result: ComparisonResult;
+    snapshotA: Snapshot;
+    snapshotB: Snapshot;
 }
 
-const ComparisonView: React.FC<ComparisonViewProps> = ({ result, snapshots }) => {
-  const categories = Object.keys(result) as SnapshotFileCategory[];
-  const [activeTab, setActiveTab] = useState<SnapshotFileCategory>(categories[0] || 'files');
-  const [olderSnapshot, newerSnapshot] = snapshots;
+const CategoryResult: React.FC<{ category: SnapshotFileCategory, content: string }> = ({ category, content }) => {
+    const [isExpanded, setIsExpanded] = useState(true);
 
-  return (
-    <div className="p-4 sm:p-6 lg:p-8 h-full flex flex-col">
-        <div className="flex-shrink-0 mb-4 pb-4 border-b border-gray-700">
-            <h2 className="text-2xl font-bold text-white">Comparison Result</h2>
-            <p className="text-sm text-gray-400">
-                Comparing "{olderSnapshot.name}" with "{newerSnapshot.name}"
-            </p>
-        </div>
-        
-        <div className="flex flex-col md:flex-row gap-4 flex-1 min-h-0">
-            <div className="w-full md:w-48 flex-shrink-0">
-                <nav className="flex flex-row md:flex-col space-x-2 md:space-x-0 md:space-y-1 overflow-x-auto md:overflow-x-visible pb-2 md:pb-0">
-                    {categories.map(cat => (
-                        <button
-                            key={cat}
-                            onClick={() => setActiveTab(cat)}
-                            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 text-left whitespace-nowrap ${
-                                activeTab === cat
-                                    ? 'bg-cyan-600 text-white'
-                                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                            }`}
-                        >
-                            {SNAPSHOT_CATEGORIES[cat]}
-                        </button>
-                    ))}
-                </nav>
-            </div>
-
-            <div className="flex-1 bg-gray-900 rounded-lg p-6 min-h-0 overflow-y-auto">
-                 <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-gray-800 prose-pre:p-4 prose-pre:rounded-md">
-                    <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed">
-                        {result[activeTab]}
-                    </pre>
+    return (
+        <div className="border border-neutral-800">
+            <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="w-full text-left p-4 bg-neutral-900/50 hover:bg-neutral-900 flex justify-between items-center focus:outline-none"
+            >
+                <div className="flex items-center">
+                    <DocumentTextIcon className="w-5 h-5 mr-3 text-neutral-500" />
+                    <h3 className="title-font text-lg text-neutral-300">{SNAPSHOT_CATEGORIES[category]}</h3>
                 </div>
-            </div>
+                {isExpanded ? <ArrowUpIcon className="w-5 h-5 text-neutral-600" /> : <ArrowDownIcon className="w-5 h-5 text-neutral-600" />}
+            </button>
+            {isExpanded && (
+                 <div className="p-6 text-neutral-400 mono-font text-sm leading-relaxed overflow-x-auto">
+                    <pre className="whitespace-pre-wrap">{content}</pre>
+                </div>
+            )}
         </div>
-    </div>
-  );
+    );
 };
 
-export default ComparisonView;
+export const ComparisonView: React.FC<ComparisonViewProps> = ({ result, snapshotA, snapshotB }) => {
+    return (
+        <div className="animate-fade-in">
+            <div className="text-center mb-10">
+                <h2 className="text-2xl title-font mb-2">Comparison Analysis</h2>
+                <p className="text-neutral-500 mono-font">
+                    Analysis of changes between "{snapshotA.name}" and "{snapshotB.name}".
+                </p>
+            </div>
+
+            <div className="space-y-6">
+                {(Object.keys(result) as SnapshotFileCategory[]).map(category => (
+                    result[category] ? (
+                        <CategoryResult key={category} category={category} content={result[category]!} />
+                    ) : null
+                ))}
+            </div>
+        </div>
+    );
+};

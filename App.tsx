@@ -1,129 +1,104 @@
+import React, { useState } from 'react';
+import { Header } from './components/Header';
+import { Instructions } from './components/Instructions';
+import { SnapshotUploadForm } from './components/SnapshotUploadForm';
+import { ComparisonView } from './components/ComparisonView';
+import { Loader } from './components/Loader';
+import { compareSnapshots } from './services/geminiService';
+import type { Snapshot, ComparisonResult, AppView } from './types';
 
-import React, { useState, useCallback, useMemo } from 'react';
-import type { AppView, Snapshot, ComparisonResult, SnapshotFileCategory } from './types.ts';
-import { SNAPSHOT_CATEGORIES } from './types.ts';
-import { compareSnapshots } from './services/geminiService.ts';
-
-import Header from './components/Header';
-import SnapshotPanel from './components/SnapshotPanel';
-import Instructions from './components/Instructions';
-import SnapshotUploadForm from './components/SnapshotUploadForm';
-import ComparisonView from './components/ComparisonView';
-import Loader from './components/Loader';
-
-export default function App() {
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
-  const [selectedSnapshotIds, setSelectedSnapshotIds] = useState<string[]>([]);
-  const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function App() {
   const [view, setView] = useState<AppView>('instructions');
+  const [snapshots, setSnapshots] = useState<[Snapshot | null, Snapshot | null]>([null, null]);
+  const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleAddSnapshot = (snapshot: Snapshot) => {
-    setSnapshots(prev => [...prev, snapshot].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));
-    setView('instructions');
+  const handleStart = () => {
+    setView('upload');
   };
 
-  const handleToggleSnapshotSelection = (id: string) => {
-    setSelectedSnapshotIds(prev => {
-      if (prev.includes(id)) {
-        return prev.filter(sid => sid !== id);
-      }
-      if (prev.length < 2) {
-        return [...prev, id];
-      }
-      return [prev[1], id]; // Keep last selected and add new one
-    });
+  const handleReset = () => {
+    setView('instructions');
+    setSnapshots([null, null]);
+    setComparisonResult(null);
+    setIsLoading(false);
+    setError(null);
   };
   
-  const handleDeleteSnapshot = (id: string) => {
-    setSnapshots(prev => prev.filter(s => s.id !== id));
-    setSelectedSnapshotIds(prev => prev.filter(sid => sid !== id));
+  const handleSnapshotsUploaded = (snapshotA: Snapshot, snapshotB: Snapshot) => {
+    setSnapshots([snapshotA, snapshotB]);
+    handleCompare(snapshotA, snapshotB);
   };
 
-  const handleCompare = useCallback(async () => {
-    if (selectedSnapshotIds.length !== 2) {
-      setError("Please select exactly two snapshots to compare.");
-      return;
-    }
-
-    const snapshotA = snapshots.find(s => s.id === selectedSnapshotIds[0]);
-    const snapshotB = snapshots.find(s => s.id === selectedSnapshotIds[1]);
-
+  const handleCompare = async (snapshotA: Snapshot, snapshotB: Snapshot) => {
     if (!snapshotA || !snapshotB) {
-      setError("Could not find the selected snapshots.");
+      setError("Both snapshots must be provided for comparison.");
       return;
     }
-    
-    // Ensure B is always newer than A
-    const [olderSnapshot, newerSnapshot] = [snapshotA, snapshotB].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-
     setIsLoading(true);
     setError(null);
     setComparisonResult(null);
-    setView('comparison');
 
     try {
-      const result = await compareSnapshots(olderSnapshot, newerSnapshot);
+      const result = await compareSnapshots(snapshotA, snapshotB);
       setComparisonResult(result);
-    } catch (e) {
-      console.error(e);
-      setError(e instanceof Error ? e.message : "An unknown error occurred during comparison.");
+      setView('comparison');
+    } catch (e: any) {
+      setError(e.message || "An unexpected error occurred during comparison.");
+      setView('upload'); // Go back to upload view on error
     } finally {
       setIsLoading(false);
     }
-  }, [selectedSnapshotIds, snapshots]);
-
-  const selectedSnapshots = useMemo(() => {
-    if (selectedSnapshotIds.length !== 2) return null;
-    const s1 = snapshots.find(s => s.id === selectedSnapshotIds[0]);
-    const s2 = snapshots.find(s => s.id === selectedSnapshotIds[1]);
-    if (!s1 || !s2) return null;
-    return [s1, s2].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-  }, [selectedSnapshotIds, snapshots]);
+  };
 
   const renderContent = () => {
     if (isLoading) {
-      return <Loader message="AI is analyzing the snapshots... This may take a moment." />;
+      return <Loader message="Analyzing snapshots..." />;
     }
+
     if (error) {
-      return <div className="p-8 text-center text-red-400">{error}</div>;
-    }
-    switch (view) {
-      case 'comparison':
-        return comparisonResult && selectedSnapshots ? (
-          <ComparisonView result={comparisonResult} snapshots={selectedSnapshots} />
-        ) : (
-          <Loader message="Preparing comparison..." />
+        return (
+            <div className="text-red-400 border border-red-400/30 bg-red-400/10 p-4 my-4 animate-fade-in">
+                <p className="title-font">Error</p>
+                <p className="mono-font mt-2">{error}</p>
+                <button onClick={handleReset} className="mt-4 px-4 py-2 border border-red-400/50 text-red-300 hover:bg-red-400/20 transition-colors text-sm title-font">Try Again</button>
+            </div>
         );
-      case 'upload':
-        return <SnapshotUploadForm onAddSnapshot={handleAddSnapshot} onCancel={() => setView('instructions')} />;
+    }
+
+    switch (view) {
       case 'instructions':
+        return <Instructions onStart={handleStart} />;
+      case 'upload':
+        return <SnapshotUploadForm onSnapshotsUploaded={handleSnapshotsUploaded} />;
+      case 'comparison':
+        if (comparisonResult && snapshots[0] && snapshots[1]) {
+          return <ComparisonView 
+            result={comparisonResult} 
+            snapshotA={snapshots[0]} 
+            snapshotB={snapshots[1]} 
+          />;
+        }
+        // Fallback if state is inconsistent
+        handleReset();
+        return null;
       default:
-        return <Instructions />;
+        return <Instructions onStart={handleStart} />;
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-900">
-      <Header />
-      <div className="flex-1 flex flex-col md:flex-row min-h-0">
-        <SnapshotPanel
-          snapshots={snapshots}
-          selectedSnapshotIds={selectedSnapshotIds}
-          onToggleSelect={handleToggleSnapshotSelection}
-          onDelete={handleDeleteSnapshot}
-          onCompare={handleCompare}
-          onAddNew={() => {
-            setView('upload');
-            setComparisonResult(null);
-            setError(null);
-          }}
-        />
-        <main className="flex-1 min-h-0 overflow-y-auto bg-gray-800/50 md:rounded-tl-2xl">
-          {renderContent()}
-        </main>
-      </div>
+    <div className="bg-black text-neutral-300 min-h-screen">
+      <Header onReset={handleReset} />
+      <main className="container mx-auto p-4 md:p-8">
+        {renderContent()}
+      </main>
+      <footer className="text-center p-4 text-neutral-700 text-xs title-font">
+        Powered by Google Gemini
+      </footer>
     </div>
   );
 }
+
+export default App;

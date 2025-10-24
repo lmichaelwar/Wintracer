@@ -1,96 +1,137 @@
-
-import React from 'react';
-import type { Snapshot } from '../types';
-import { PlusIcon, TrashIcon, CompareIcon } from './Icons';
+import React, { useState, useCallback, DragEvent, useRef } from 'react';
+import { FileIcon, UploadIcon, CheckCircleIcon, XCircleIcon } from './Icons';
+import type { Snapshot, SnapshotData, SnapshotFile, SnapshotFileCategory } from '../types';
+import { SNAPSHOT_CATEGORIES } from '../types';
 
 interface SnapshotPanelProps {
-  snapshots: Snapshot[];
-  selectedSnapshotIds: string[];
-  onToggleSelect: (id: string) => void;
-  onDelete: (id: string) => void;
-  onCompare: () => void;
-  onAddNew: () => void;
+    title: string;
+    onSnapshotReady: (snapshot: Snapshot) => void;
 }
 
-const SnapshotPanel: React.FC<SnapshotPanelProps> = ({
-  snapshots,
-  selectedSnapshotIds,
-  onToggleSelect,
-  onDelete,
-  onCompare,
-  onAddNew,
-}) => {
-  const canCompare = selectedSnapshotIds.length === 2;
+export const SnapshotPanel: React.FC<SnapshotPanelProps> = ({ title, onSnapshotReady }) => {
+    const [snapshotData, setSnapshotData] = useState<SnapshotData>({});
+    const [error, setError] = useState<string | null>(null);
+    const [isDragActive, setIsDragActive] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
 
-  return (
-    <aside className="w-full md:w-80 lg:w-96 flex-shrink-0 bg-gray-900 p-4 border-b md:border-b-0 md:border-r border-gray-700 flex flex-col">
-      <div className="flex items-center justify-between pb-4">
-        <h2 className="text-lg font-semibold">Snapshots</h2>
-        <button
-          onClick={onAddNew}
-          className="flex items-center space-x-2 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold py-2 px-3 rounded-lg transition-colors duration-200 text-sm"
-        >
-          <PlusIcon className="w-5 h-5" />
-          <span>New</span>
-        </button>
-      </div>
+    const processFiles = (files: FileList | null) => {
+        if (!files || files.length === 0) {
+            return;
+        }
+        setError(null);
+        const newSnapshotData: SnapshotData = {};
+        let filesProcessed = 0;
+        const acceptedFiles = Array.from(files).filter(file => file.type === 'text/plain' || file.name.endsWith('.txt'));
 
-      <div className="flex-1 overflow-y-auto space-y-3 pr-2 -mr-2">
-        {snapshots.length === 0 ? (
-          <div className="text-center text-gray-400 mt-8">
-            <p>No snapshots yet.</p>
-            <p className="text-sm">Click "New" to create one.</p>
-          </div>
-        ) : (
-          snapshots.map(snapshot => (
+        if (acceptedFiles.length === 0) {
+            setError("No valid .txt files were provided. Please provide text files named after system categories (e.g., 'files.txt', 'registry.txt').");
+            return;
+        }
+
+        acceptedFiles.forEach(file => {
+            const reader = new FileReader();
+            reader.onabort = () => console.log('file reading was aborted');
+            reader.onerror = () => setError(`Error reading file ${file.name}`);
+            reader.onload = () => {
+                const fileContent = reader.result as string;
+                const fileName = file.name.split('.')[0].toLowerCase() as SnapshotFileCategory;
+
+                if (Object.keys(SNAPSHOT_CATEGORIES).includes(fileName)) {
+                    const snapshotFile: SnapshotFile = {
+                        name: file.name,
+                        content: fileContent,
+                    };
+                    newSnapshotData[fileName] = snapshotFile;
+                }
+                
+                filesProcessed++;
+                if(filesProcessed === acceptedFiles.length) {
+                    const mergedData = {...snapshotData, ...newSnapshotData};
+                    setSnapshotData(mergedData);
+                    
+                    const newSnapshot: Snapshot = {
+                        id: title.replace(/\s+/g, '-').toLowerCase(),
+                        name: title,
+                        createdAt: new Date(),
+                        data: mergedData
+                    };
+                    onSnapshotReady(newSnapshot);
+                }
+            };
+            reader.readAsText(file);
+        });
+    };
+
+    const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragActive(false);
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            processFiles(e.dataTransfer.files);
+        }
+    }, [snapshotData, onSnapshotReady, title]);
+
+    const handleDrag = useCallback((e: DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === "dragenter" || e.type === "dragover") {
+            setIsDragActive(true);
+        } else if (e.type === "dragleave") {
+            setIsDragActive(false);
+        }
+    }, []);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        processFiles(e.target.files);
+    };
+
+    const onButtonClick = () => {
+        inputRef.current?.click();
+    };
+
+    const uploadedCategories = Object.keys(snapshotData) as SnapshotFileCategory[];
+
+    return (
+        <div className="border border-neutral-800 p-6 w-full">
+            <h3 className="text-lg font-semibold mb-4 text-center title-font text-neutral-300">{title}</h3>
             <div
-              key={snapshot.id}
-              onClick={() => onToggleSelect(snapshot.id)}
-              className={`p-3 rounded-lg cursor-pointer transition-all duration-200 border-2 ${
-                selectedSnapshotIds.includes(snapshot.id)
-                  ? 'bg-cyan-900/50 border-cyan-500 shadow-lg'
-                  : 'bg-gray-800 border-transparent hover:border-gray-600'
-              }`}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                onClick={onButtonClick}
+                className={`border-2 border-dashed p-8 text-center cursor-pointer transition-colors
+                    ${isDragActive ? 'border-neutral-500 bg-neutral-900' : 'border-neutral-700 hover:border-neutral-600'}`}
             >
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="font-bold text-gray-100">{snapshot.name}</p>
-                  <p className="text-xs text-gray-400">
-                    {snapshot.createdAt.toLocaleString()}
-                  </p>
+                <input ref={inputRef} type="file" multiple className="hidden" onChange={handleFileChange} accept=".txt,text/plain" />
+                <div className="flex flex-col items-center">
+                    <UploadIcon className="w-10 h-10 text-neutral-600 mb-3" />
+                    {isDragActive ? (
+                        <p className="text-neutral-400 mono-font">Drop files here</p>
+                    ) : (
+                        <p className="text-neutral-500 mono-font text-sm">Drag & drop or click to select</p>
+                    )}
                 </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(snapshot.id);
-                  }}
-                  className="p-1 rounded-full text-gray-400 hover:bg-red-500/20 hover:text-red-400 transition-colors"
-                >
-                  <TrashIcon className="w-4 h-4" />
-                </button>
-              </div>
             </div>
-          ))
-        )}
-      </div>
 
-      <div className="mt-4 pt-4 border-t border-gray-700">
-        <button
-          onClick={onCompare}
-          disabled={!canCompare}
-          className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-lg transition-all duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed disabled:text-gray-400"
-        >
-          <CompareIcon className="w-6 h-6" />
-          <span>Compare Snapshots</span>
-        </button>
-        {!canCompare && (
-          <p className="text-center text-xs text-gray-500 mt-2">
-            Select two snapshots to compare
-          </p>
-        )}
-      </div>
-    </aside>
-  );
+            {error && <p className="text-red-400 mt-4 text-sm mono-font flex items-center"><XCircleIcon className="w-4 h-4 mr-2 shrink-0"/>{error}</p>}
+            
+            {uploadedCategories.length > 0 && (
+                <div className="mt-6">
+                    <h4 className="font-semibold text-neutral-400 mb-2 flex items-center title-font text-sm">
+                        <CheckCircleIcon className="w-5 h-5 text-green-600 mr-2" />
+                        Files Uploaded
+                    </h4>
+                    <ul className="space-y-1 text-sm text-neutral-500 mono-font">
+                        {uploadedCategories.map(category => (
+                            <li key={category} className="flex items-center">
+                                <FileIcon className="w-4 h-4 mr-2 text-neutral-600" />
+                                {snapshotData[category]?.name}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
 };
-
-export default SnapshotPanel;
